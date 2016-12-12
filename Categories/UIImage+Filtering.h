@@ -23,6 +23,8 @@
 
 -(UIImage*)gammaCorrectionWithValue:(float)value;
 
+-(UIImage*)outputLevelsCorrectionWithBlackLevel:(float)blackLevel withWhiteLevel:(float)whiteLevel;
+
 -(UIImage*)grayscale;
 
 -(UIImage*)invert;

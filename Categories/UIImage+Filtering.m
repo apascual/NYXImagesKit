@@ -391,6 +391,75 @@ static int16_t __s_unsharpen_kernel_3x3[9] = {
 	return gamma;
 }
 
+-(UIImage*)outputLevelsCorrectionWithBlackLevel:(float)blackLevel withWhiteLevel:(float)whiteLevel {
+    const size_t width = (size_t)self.size.width;
+    const size_t height = (size_t)self.size.height;
+    /// Number of bytes per row, each pixel in the bitmap will be represented by 4 bytes (ARGB), 8 bits of alpha/red/green/blue
+    const size_t bytesPerRow = width * kNyxNumberOfComponentsPerARBGPixel;
+    
+    /// Create an ARGB bitmap context
+    CGContextRef bmContext = NYXCreateARGBBitmapContext(width, height, bytesPerRow, NYXImageHasAlpha(self.CGImage));
+    if (!bmContext)
+        return nil;
+    
+    /// Draw the image in the bitmap context
+    CGContextDrawImage(bmContext, (CGRect){.origin.x = 0.0f, .origin.y = 0.0f, .size.width = width, .size.height = height}, self.CGImage);
+    
+    /// Grab the image raw data
+    UInt8* data = (UInt8*)CGBitmapContextGetData(bmContext);
+    if (!data)
+    {
+        CGContextRelease(bmContext);
+        return nil;
+    }
+    
+    const size_t pixelsCount = width * height;
+    const size_t n = sizeof(float) * pixelsCount;
+    float* dataAsFloat = (float*)malloc(n);
+    float* temp = (float*)malloc(n);
+    float min = (float)kNyxMinPixelComponentValue, max = (float)kNyxMaxPixelComponentValue;
+    const int iPixels = (int)pixelsCount;
+    
+    float value = 0;
+    float outBlack = blackLevel, outWhite = whiteLevel;
+    float mutiplier = (outBlack - outWhite);
+    
+    /// Need a vector with same size :(
+    vDSP_vfill(&value, temp, 1, pixelsCount);
+    
+    /// Calculate red components
+    vDSP_vfltu8(data + 1, 4, dataAsFloat, 1, pixelsCount);
+    vDSP_vsmsa(dataAsFloat, 1, &mutiplier, &outWhite, dataAsFloat, 1, pixelsCount);
+    vDSP_vclip(dataAsFloat, 1, &min, &max, dataAsFloat, 1, pixelsCount);
+    vDSP_vfixu8(dataAsFloat, 1, data + 1, 4, pixelsCount);
+    
+    /// Calculate green components
+    vDSP_vfltu8(data + 2, 4, dataAsFloat, 1, pixelsCount);
+    vDSP_vsmsa(dataAsFloat, 1, &mutiplier, &outWhite, dataAsFloat, 1, pixelsCount);
+    vDSP_vclip(dataAsFloat, 1, &min, &max, dataAsFloat, 1, pixelsCount);
+    vDSP_vfixu8(dataAsFloat, 1, data + 2, 4, pixelsCount);
+    
+    /// Calculate blue components
+    vDSP_vfltu8(data + 3, 4, dataAsFloat, 1, pixelsCount);
+    vDSP_vsmsa(dataAsFloat, 1, &mutiplier, &outWhite, dataAsFloat, 1, pixelsCount);
+    vDSP_vclip(dataAsFloat, 1, &min, &max, dataAsFloat, 1, pixelsCount);
+    vDSP_vfixu8(dataAsFloat, 1, data + 3, 4, pixelsCount);
+    
+    /// Cleanup
+    free(temp);
+    free(dataAsFloat);
+    
+    /// Create an image object from the context
+    CGImageRef gammaImageRef = CGBitmapContextCreateImage(bmContext);
+    UIImage* gamma = [UIImage imageWithCGImage:gammaImageRef];
+    
+    /// Cleanup
+    CGImageRelease(gammaImageRef);
+    CGContextRelease(bmContext);
+    
+    return gamma;
+}
+
 -(UIImage*)grayscale
 {
 	/* const UInt8 luminance = (red * 0.2126) + (green * 0.7152) + (blue * 0.0722); // Good luminance value */
